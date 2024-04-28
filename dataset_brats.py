@@ -124,11 +124,10 @@ class NiftiPairImageGenerator(Dataset):
         return result_img
 
     def label2masks(self, masked_img):
-        result_img = np.zeros(masked_img.shape + (4,))   # ( (H, W, D) + (2,)  =  (H, W, D, 2)  -> (B, 2, H, W, D))
-        result_img[masked_img==LabelEnum.TUMORAREA1.value, 0] = 1
-        result_img[masked_img==LabelEnum.TUMORAREA2.value, 1] = 1
-        result_img[masked_img==LabelEnum.TUMORAREA3.value, 2] = 1
-        result_img[masked_img==LabelEnum.BRAINAREA.value, 3] = 1
+        result_img = np.zeros(masked_img.shape + (1,))   # ( (H, W, D) + (2,)  =  (H, W, D, 2)  -> (B, 2, H, W, D))
+        print("results image shape", result_img.shape, masked_img.shape)
+
+        result_img[((masked_img==1) | (masked_img==2) | (masked_img==3)), 0] = 1
         return result_img
 
     def combine_mask_channels(self, masks): # masks: (2, H, W, D), 2->mask channels
@@ -383,6 +382,12 @@ class NiftiPairImageGenerator(Dataset):
         if modality == 'seg':
             img = self.label2masks(img) if self.full_channel_mask else img
             img = self.center_crop(img) if not self.full_channel_mask else self.center_crop_4d(img)
+            mask = img.copy()
+        elif modality == "reverse_seg":
+            img = self.label2masks(img) if self.full_channel_mask else img
+            img = (img == 0).astype(np.float32)
+            img = self.center_crop(img) if not self.full_channel_mask else self.center_crop_4d(img)
+            mask = img.copy()
         elif modality in ['t1', 't1ce', 't2', 'flair']:
             # print(img.shape)
             img = self.center_crop(img)
@@ -398,7 +403,7 @@ class NiftiPairImageGenerator(Dataset):
         # print(img.shape)
         for i in range(img.shape[-1]):
             img[...,i], mask = self.downsample(img[...,i], downsample, mask=mask) if downsample is not None else (img[...,i], mask)
-        if not mask is None:
+        if mask is not None and len(mask.shape) == 3:
             mask = mask[..., np.newaxis]
         return img, mask #, meta_data if modality in ['t1', 't1ce', 't2', 'flair'] else None
 
@@ -501,6 +506,7 @@ class NiftiPairImageGenerator(Dataset):
         if mask is None:
             mask = np.ones_like(input_img[...])
         else:
+            print(mask.shape)
             final_mask = np.zeros_like(input_img[...])
             for i in range(np.shape(input_img)[-1]):
                 final_mask[...,i] = mask[...,0]
@@ -514,13 +520,20 @@ class NiftiPairImageGenerator(Dataset):
         
         if len(self.random_crop_size) > 0:
             # randomly crop long three axis:
-            x_start = np.random.randint(0, input_img.shape[0] - self.random_crop_size[0])
-            y_start = np.random.randint(0, input_img.shape[1] - self.random_crop_size[1])
-            z_start = np.random.randint(0, input_img.shape[2] - self.random_crop_size[2])
+            while True:
+                try:
+                    x_start = np.random.randint(0, input_img.shape[0] - self.random_crop_size[0])
+                    y_start = np.random.randint(0, input_img.shape[1] - self.random_crop_size[1])
+                    z_start = np.random.randint(0, input_img.shape[2] - self.random_crop_size[2])
+                except:
+                    print(input_img.shape, self.random_crop_size)
 
-            input_img = input_img[x_start:x_start+self.random_crop_size[0], y_start:y_start+self.random_crop_size[1], z_start:z_start+self.random_crop_size[2], :]
-            target_img = target_img[x_start:x_start+self.random_crop_size[0], y_start:y_start+self.random_crop_size[1], z_start:z_start+self.random_crop_size[2], :]
-            mask = mask[x_start:x_start+self.random_crop_size[0], y_start:y_start+self.random_crop_size[1], z_start:z_start+self.random_crop_size[2], :]
+                input_img = input_img[x_start:x_start+self.random_crop_size[0], y_start:y_start+self.random_crop_size[1], z_start:z_start+self.random_crop_size[2], :]
+                target_img = target_img[x_start:x_start+self.random_crop_size[0], y_start:y_start+self.random_crop_size[1], z_start:z_start+self.random_crop_size[2], :]
+                mask = mask[x_start:x_start+self.random_crop_size[0], y_start:y_start+self.random_crop_size[1], z_start:z_start+self.random_crop_size[2], :]
+                if np.sum(mask) > 0:
+                    break
+                print("random crop mask is all zero, re-random crop")
             # save image to disk with plt.savefig()
             
         # target/input specific pre-processing
@@ -559,11 +572,12 @@ class NiftiPairImageGenerator(Dataset):
         # plt.savefig("target_img_item.png")
         # plt.imshow(mask[0,:,:,32])
         # plt.savefig("mask.png")
-        
-        return {'input':input_img, 'target':target_img, 'mask':mask}
+        c, d, w, h = input_img.shape
+        # input_img = torch.zeros((0,d,w,h))
+        return {'input': input_img, 'target': target_img, 'mask': input_img}
 
 # if this is the main file
-    
+
 if __name__ == '__main__':
     dataset = NiftiPairImageGenerator(
         dataset_folder='Brast21',

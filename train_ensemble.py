@@ -122,15 +122,13 @@ def main(rank: int, world_size: int, args):
         print("note that self consistency must be used with residual = True")
         cond_channels = len(input_modality)
         if "seg" in input_modality:
-            cond_channels += 3
+            cond_channels -= 1
         if args.glob_pos_emb:
             cond_channels += 3
         if args.none_zero_mask:
             cond_channels += 1
 
         target_channels = len(target_modality)
-        if "seg" in target_modality:
-            target_channels += 3
 
         in_channels = cond_channels + target_channels if with_condition or with_pairwised else 1
         # inchannels added for 2D model input

@@ -33,7 +33,7 @@ from torch.utils.data.distributed import DistributedSampler
 from torch.distributed import init_process_group,destroy_process_group
 # for fast sampling
 
-from fast_sampling.inference_utils import *
+# from fast_sampling.inference_utils import *
 
 def scale(data,data_min = -1, data_max = 1):
     data = (data - data_min) / np.abs(data_max - data_min)
@@ -44,7 +44,8 @@ try:
     print("APEX: ON")
 except:
     APEX_AVAILABLE = False
-    print("APEX: OFF")
+    print("in trainer brast APEX: OFF")
+    # print("APEX: OFF")
 
 def exists(x):
     return x is not None
@@ -513,6 +514,10 @@ class Trainer(object):
                     input_tensors = data['input'].cuda()
                     target_tensors = data['target'].cuda()
                     mask = data['mask'].cuda()
+                    # if mask is all 0, skip this iteration
+                    if mask.sum() == 0:
+                        print("mask is all 0, skip this iteration")
+                        continue
                     # if self.fp16:
                     with torch.autocast(device_type="cuda", dtype=torch.float16, enabled = self.fp16):
                         loss = self.model(target_tensors, condition_tensors=input_tensors, mask = mask)
@@ -624,7 +629,8 @@ class Trainer(object):
                             self.viz(target_data[:, i, ...], str(self.results_folder / f'sample-{milestone}-GPU{self.gpu_id}-GT-modal-{i}'))
                             if self.residual_training:
                                 self.viz(2 * target_data[:, i, ...] + input_data[:, i, ...], str(self.results_folder / f'sample-{milestone}-GPU{self.gpu_id}-GT-modal-final-{i}'))
-
+                        for i in range(mask.shape[1]):
+                            self.viz(mask[:, i, ...], str(self.results_folder / f'sample-{milestone}-GPU{self.gpu_id}-mask-modal-{i}'))
 
                         self.viz(mask[:,0, ...], str(self.results_folder / f'debug_mask/sample-{milestone}-GPU{self.gpu_id}'))
                         

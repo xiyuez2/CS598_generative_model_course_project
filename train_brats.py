@@ -113,16 +113,16 @@ def main(rank: int, world_size: int, args):
 
 
         cond_channels = len(input_modality)
-        if "seg" in input_modality:
-            cond_channels += 3
+        # if "seg" in input_modality:
+        #     cond_channels += 3
         if args.glob_pos_emb:
             cond_channels += 3
         if args.none_zero_mask:
             cond_channels += 1
 
         target_channels = len(target_modality)
-        if "seg" in target_modality:
-            target_channels += 3
+        # if "seg" in target_modality:
+        #     target_channels += 3
 
         in_channels = cond_channels + target_channels if with_condition or with_pairwised else 1
         out_channels = target_channels
@@ -287,5 +287,6 @@ if __name__ == "__main__":
         yaml.dump(args_dict, file, default_flow_style=False)
     
     # exit()
-    mp.spawn(main, args=(args.gpus, args), nprocs=args.gpus)
+    # mp.spawn(main, args=(args.gpus, args), nprocs=args.gpus)
+    main(0, 1, args)
     

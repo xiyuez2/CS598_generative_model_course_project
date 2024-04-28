@@ -44,7 +44,7 @@ try:
     print("APEX: ON")
 except:
     APEX_AVAILABLE = False
-    print("APEX: OFF")
+    print("in diffusion_ensemble: APEX: OFF")
 
 def exists(x):
     return x is not None
