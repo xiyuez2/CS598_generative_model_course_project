@@ -88,33 +88,10 @@ def main(rank: int, world_size: int, args):
 
         print("self consistency enforce:", self_consistency_config)
 
-        # for i,name in enumerate(target_modality):
-        #     if "seg" in name:
-        #         for j in range(4):
-        #             res_folder_names.append("Inference" + str(i)+ ":" + name + str(j))
-        #     else:
-        #         res_folder_names.append("Inference" + str(i)+ ":" + name)
-
-        # for i, name in enumerate(input_modality):
-        #     if "seg" in name:
-        #         for j in range(4):
-        #             res_folder_names.append("Input" + str(i) + ":" + name + str(j))
-        #     else:
-        #         res_folder_names.append("Input" + str(i)+ ":" + name)
-        
-        # for i,name in enumerate(target_modality):
-        #     if "seg" in name:
-        #         for j in range(4):
-        #             res_folder_names.append("GT" + str(i)+ ":" + name + str(j))
-        #     else:
-        #         res_folder_names.append("GT" + str(i)+ ":" + name)
-        
-        # print("inference results will be saved in the following folders:", res_folder_names)
-
 
         cond_channels = len(input_modality)
-        # if "seg" in input_modality:
-        #     cond_channels += 3
+        if "seg" in input_modality or "reverse" in input_modality:
+            cond_channels -= 1
         if args.glob_pos_emb:
             cond_channels += 3
         if args.none_zero_mask:
@@ -227,7 +204,7 @@ def main(rank: int, world_size: int, args):
         if not args.validation:
             trainer.train()
         else:
-            trainer.validate()
+            trainer.fast_sample()
 
     except Exception as e:
         destroy_process_group()
@@ -287,6 +264,6 @@ if __name__ == "__main__":
         yaml.dump(args_dict, file, default_flow_style=False)
     
     # exit()
-    # mp.spawn(main, args=(args.gpus, args), nprocs=args.gpus)
-    main(0, 1, args)
+    mp.spawn(main, args=(args.gpus, args), nprocs=args.gpus)
+    # main(0, 1, args)
     

@@ -33,7 +33,7 @@ from torch.utils.data.distributed import DistributedSampler
 from torch.distributed import init_process_group,destroy_process_group
 # for fast sampling
 
-# from fast_sampling.inference_utils import *
+from fast_sampling.inference_utils import *
 
 def scale(data,data_min = -1, data_max = 1):
     data = (data - data_min) / np.abs(data_max - data_min)
@@ -583,7 +583,7 @@ class Trainer(object):
                         if self.gpu_id == self.world_size - 1:
                             self.save(milestone)
                             print("saved at step ", self.step)
-                                                
+
                         # validate
                         print("validating")
                         val_loss_total = []
@@ -615,7 +615,7 @@ class Trainer(object):
 
                         # save and viz inference result
                         
-                        for i in range(all_images.shape[1]):
+                        for i in range(all_images[0].shape[0]):
                             self.viz(all_images[:, i, ...], str(self.results_folder / f'sample-{milestone}-GPU{self.gpu_id}-inferece-modal-{i}'))
                             if self.residual_training:
                                 self.viz(2 * all_images[:, i, ...] + input_data[:, i, ...], str(self.results_folder / f'sample-{milestone}-GPU{self.gpu_id}-inferece-modal-final-{i}'))
@@ -736,9 +736,7 @@ class Trainer(object):
 
         self.results_folder = self.results_folder_old
 
-    def fast_sample(self,sampling_step = 50):
-        
-        
+    def fast_sample(self,sampling_step = 10):
         # for debug only!!
         # sampling_step = 5
         start_time = time.time()
@@ -766,95 +764,42 @@ class Trainer(object):
 
                 if self.with_condition:
                     print("start inference with condition on GPU ", self.gpu_id)
-                    all_images = diffusion.p_sample_loop(wrap, target_tensors.shape[1:], progress=True, self_consistency_config = self.self_consistency_config)
+                    all_images = diffusion.p_sample_loop(wrap, target_tensors.shape[1:], progress=True, self_consistency_config = self.self_consistency_config, x_GT = target_tensors)
                     #self.ema_model.module.sample(batch_size=batch_size, condition_tensors=input_tensors, debug = "debug")
                 else:
-                    all_images = diffusion.p_sample_loop(wrap, target_tensors.shape[1:], progress=True, self_consistency_config = self.self_consistency_config)
+                    all_images = diffusion.p_sample_loop(wrap, target_tensors.shape[1:], progress=True, self_consistency_config = self.self_consistency_config, x_GT = target_tensors)
                     #self.ema_model.module.sample(batch_size=batch_size)
-                print(all_images.shape)
-                all_images = all_images.unsqueeze(0)
-                # print(all_images.shape, all_images.min(), all_images.max(), all_images.mean())
-                # print("debugging!!",all_images.shape)
-                if i < 3:
-                    for j in range(all_images.shape[1]):
-                        if self.residual_training:
-                            self.viz(2 * all_images[:, j, ...] + input_tensors[:, j, ...], str(self.results_folder + f'/sample-{i}-GPU{self.gpu_id}-inferece-modal-final-{j}'))
-                        else:
-                            self.viz(all_images[:, j, ...], str(self.results_folder + f'/validation-{i}-GPU{self.gpu_id}-inferece-modal-{j}'))
-                    
-                    # save and viz input
-                    for j in range(input_tensors.shape[1]):
-                        self.viz(input_tensors[:, j, ...], str(self.results_folder + f'/sample-{i}-GPU{self.gpu_id}-input-modal-{j}'))
-
-                    # save and viz GT
-                    for j in range(target_tensors.shape[1]):
-                        if self.residual_training:
-                            self.viz(2 * target_tensors[:, j, ...] + input_tensors[:, j, ...], str(self.results_folder + f'/sample-{i}-GPU{self.gpu_id}-GT-modal-final-{j}'))
-                        else:
-                            self.viz(target_tensors[:, j, ...], str(self.results_folder + f'/sample-{i}-GPU{self.gpu_id}-GT-modal-{j}'))
-                    
-                # cal metrics
-                b, c, d, w, h = all_images.shape
+                print("!!!!!!!!!!!!!!!!!!")
+                print(len(all_images), all_images[0].shape)
+                print("!!!!!!!!!!!!!!!!!!")
+                b, d, w, h = all_images[0].shape
+                total_T = len(all_images)
+                L2_map = np.zeros_like(mask.cpu().numpy())
                 
-                for j in range(len(all_images)):
-                    current_metrics = [] # modality x 3
-                    for k in range(all_images.shape[1]):
-                        if not self.residual_training:
-                            cur_res = all_images[j, k, ...] / 2. + 0.5
-                            cur_target = target_tensors[j, k, ...] / 2. + 0.5
-                        else:
-                            # debugging = torch.nn.functional.avg_pool3d(all_images[j, k, ...].unsqueeze(0),4, 4)
-                            
-                            cur_res = (2 * all_images[j, k, ...] + input_tensors[j, k, ...]) / 2. + 0.5 
-                            cur_target = (2 * target_tensors[j, k, ...] + input_tensors[j, k, ...]) / 2. + 0.5
-                        
-                        
-                        
-                        # check self consistency:
-                        # cur_res, cur_target, input_tensors
-                        
-                        downsampled = torch.nn.functional.avg_pool3d(cur_res.unsqueeze(0),4, 4) # 1 d, w, h
-                        downsampled = torch.repeat_interleave(downsampled, 4, dim=1)
-                        downsampled = torch.repeat_interleave(downsampled, 4, dim=2)
-                        downsampled = torch.repeat_interleave(downsampled, 4, dim=3)
-                        
-                        print("debugging")
-                        print(torch.min(downsampled), torch.max(downsampled), torch.mean(downsampled))
-                        print(torch.min(cur_res), torch.max(cur_res), torch.mean(cur_res))
-                        print(torch.min(cur_target), torch.max(cur_target), torch.mean(cur_target))
-                        print(torch.min(input_tensors[j,k,...]), torch.max(input_tensors[j,k,...]), torch.mean(input_tensors[j,k,...]))
+                w = [0.1, 0.3, 0.5]
+                for j in range(7, len(all_images)):
+                    cur_L2_map = (all_images[j].cpu().numpy() - target_tensors.cpu().numpy()) ** 2
+                    L2_map += w[j-7] * cur_L2_map
+                    if i < 3:
+                        self.viz(all_images[j][0, ...], str(self.results_folder + f'/validation-{i}-GPU{self.gpu_id}-inferece-modal-{j}'))  
+                        self.viz( (torch.tensor(cur_L2_map[0, ...]) / np.max(L2_map)) * 2 - 1 , str(self.results_folder + f'/validation-{i}-GPU{self.gpu_id}-modal-{j}-L2-map'))
+                if i < 3:
+                    self.viz(mask[0, ...], str(self.results_folder + f'/validation-{i}-GPU{self.gpu_id}-mask'))
 
-                        print("check self consistency, this should be 0: ",torch.mean((downsampled - (input_tensors[j,k,...].unsqueeze(0) / 2 + 0.5) ) ** 2))
-                        
-                        downsampled = torch.nn.functional.avg_pool3d(cur_target.unsqueeze(0),4, 4) # 1 d, w, h
-                        downsampled = torch.repeat_interleave(downsampled, 4, dim=1)
-                        downsampled = torch.repeat_interleave(downsampled, 4, dim=2)
-                        downsampled = torch.repeat_interleave(downsampled, 4, dim=3)
-                        print("check self consistency, this have to be 0: ",torch.mean((downsampled - (input_tensors[j,k,...].unsqueeze(0) / 2 + 0.5) ) ** 2))
-                        
-                        # cur_res = scale(cur_res.cpu().numpy())
-                        # cur_target = scale(cur_target.cpu().numpy())
-                        cur_res = cur_res.cpu().numpy()
-                        cur_target = cur_target.cpu().numpy()
-                        print("debug data range")
-                        # print(cur_res)
-                        print(cur_res.shape)
-                        print("L2", np.mean((cur_res - cur_target) ** 2))
-                        print(np.min(cur_res), np.max(cur_res), np.mean(cur_res))
-                        print(np.min(cur_target), np.max(cur_target), np.mean(cur_target))
-                        # save res to disk
-                        cur_path = str(self.results_folder + f'/sample-{i*b + j}-GPU{self.gpu_id}-GT-modal-{k}')
-                        np.save(cur_path, cur_target)
-                        cur_path = str(self.results_folder + f'/sample-{i*b + j}-GPU{self.gpu_id}-inferece-modal-{k}')
-                        np.save(cur_path, cur_res)
+                L2_map = L2_map / np.mean(L2_map)
+                print("L2_mean:", np.mean(L2_map))
+                mask = mask.cpu().numpy()
+                mask = 1 - mask
 
-                        # metrics_k = self.val_ds.evaluate(cur_res, cur_target) # len: 3
-                        # L2 loss 
-                        metrics_k = np.mean((cur_res - cur_target) ** 2)
-                        current_metrics.append(metrics_k)
-                    
-                    total_metrics.append(current_metrics) # num_samples x modality x 3
-                    print(f"GPU{self.gpu_id}")
-                    print(total_metrics)
+                for thres in [0.5, 1, 3]:
+                    ours = L2_map < thres
+                    # compute IoU
+                    intersection = np.logical_and(mask, ours)
+                    union = np.logical_or(mask, ours)
+                    iou = np.sum(intersection) / np.sum(union)
+                    print(np.sum(intersection) / np.sum(mask))
+                    print(np.sum(union)/ np.sum(mask) )
+                    print("thres:", thres)
+                    print("IoU:", iou)
 
         self.results_folder = self.results_folder_old

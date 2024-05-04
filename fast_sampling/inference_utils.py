@@ -158,7 +158,8 @@ class Wrap(nn.Module):
     def forward(self, x, t):
 
         with torch.no_grad():
-            x = x.unsqueeze(1)
+            if len(x.shape) == 4:
+                x = x.unsqueeze(1)
             x = torch.cat([x, self.condition], 1)
             x = self.net(x, t)
             x = x.squeeze(1)

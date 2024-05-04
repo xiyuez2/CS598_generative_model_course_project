@@ -328,6 +328,8 @@ class GaussianDiffusion:
         }
 
     def _predict_xstart_from_eps(self, x_t, t, eps):
+        # print("x_t:", x_t.shape)
+        # print("eps:", eps.shape)
         assert x_t.shape == eps.shape
 #         print("self.sqrt_recip_alphas_cumprod: ", self.sqrt_recip_alphas_cumprod)
 #         print("self.sqrt_recipm1_alphas_cumprod: ", self.sqrt_recipm1_alphas_cumprod)
@@ -483,6 +485,7 @@ class GaussianDiffusion:
         device=None,
         progress=False,
         self_consistency_config={},
+        x_GT = None
     ):
         """
         Generate samples from the model.
@@ -504,7 +507,7 @@ class GaussianDiffusion:
         :return: a non-differentiable batch of samples.
         """
         self.self_consistency_config = self_consistency_config
-        final = None
+        final = []
         for sample in self.p_sample_loop_progressive(
             model,
             shape,
@@ -515,9 +518,10 @@ class GaussianDiffusion:
             model_kwargs=model_kwargs,
             device=device,
             progress=progress,
+            x_GT = x_GT
         ):
-            final = sample
-        return final["sample"]
+            final.append(sample["sample"])
+        return final
 
     def p_sample_loop_progressive(
         self,
@@ -530,6 +534,7 @@ class GaussianDiffusion:
         model_kwargs=None,
         device=None,
         progress=False,
+        x_GT = None
     ):
         """
         Generate samples from the model and yield intermediate samples from
@@ -567,7 +572,7 @@ class GaussianDiffusion:
                     model_kwargs=model_kwargs,
                 )
                 yield out
-                img = out["sample"]
+                img = x_GT[0]
 
     def ddim_sample(
         self,
